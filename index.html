@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>헬린이 AI 기구 인식 루틴 추천</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+  <div class="max-w-xl mx-auto p-5">
+    <header class="text-center my-6">
+      <h1 class="text-2xl font-bold text-emerald-400">🏋️ 헬린이 AI 기구 루틴 메이커</h1>
+      <p class="text-slate-400 text-sm mt-2">헬스장 기구 사진을 찍어 올리면 오늘 할 운동을 짜드립니다.</p>
+    </header>
+
+    <main class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 space-y-5">
+      <!-- 사진 업로드 영역 -->
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-2">
+          1. 운동기구 사진 선택 (여러 장 가능)
+        </label>
+        <input
+          type="file"
+          id="imageInput"
+          accept="image/*"
+          multiple
+          class="block w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-emerald-500 file:text-slate-950 hover:file:bg-emerald-400 cursor-pointer"
+        />
+        <div id="previewContainer" class="grid grid-cols-3 gap-2 mt-3"></div>
+      </div>
+
+      <!-- 옵션 선택 -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">운동 목표</label>
+          <select id="goalSelect" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400">
+            <option value="전신 근력 및 기초 체력 향상">전신 기초 체력</option>
+            <option value="상체 위주 근성장">상체 위주</option>
+            <option value="하체 및 코어 강화">하체 위주</option>
+            <option value="체지방 감량 및 다이어트">다이어트 / 유산소 병행</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">운동 시간</label>
+          <select id="durationSelect" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400">
+            <option value="30분 (짧고 굵게)">30분</option>
+            <option value="45분 (표준)" selected>45분</option>
+            <option value="60분 (충분히)">60분</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 실행 버튼 -->
+      <button
+        id="submitBtn"
+        class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        기구 분석하고 루틴 받기
+      </button>
+    </main>
+
+    <!-- 로딩 표시 -->
+    <div id="loading" class="hidden text-center my-8 space-y-3">
+      <div class="inline-block w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+      <p class="text-sm text-emerald-300">AI 트레이너가 기구를 분석하고 루틴을 짜는 중입니다...</p>
+    </div>
+
+    <!-- 결과 출력 영역 -->
+    <section id="resultSection" class="hidden mt-6 bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700">
+      <div id="resultContent" class="prose prose-invert prose-sm max-w-none leading-relaxed"></div>
+    </section>
+  </div>
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const previewContainer = document.getElementById('previewContainer');
+    const submitBtn = document.getElementById('submitBtn');
+    const loading = document.getElementById('loading');
+    const resultSection = document.getElementById('resultSection');
+    const resultContent = document.getElementById('resultContent');
+
+    let compressedImages = [];
+
+    // 스마트폰 고화질 사진을 Vercel 전송 한도(4.5MB)에 맞게 800px 이하 JPEG로 압축
+    function compressImage(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800;
+            const scaleSize = MAX_WIDTH / Math.max(img.width, MAX_WIDTH);
+            canvas.width = img.width * scaleSize;
+            canvas.height = img.height * scaleSize;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.75));
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 파일 선택 시 미리보기 및 압축 실행
+    imageInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      previewContainer.innerHTML = '';
+      compressedImages = [];
+
+      for (const file of files) {
+        const base64 = await compressImage(file);
+        compressedImages.push(base64);
+
+        const imgEl = document.createElement('img');
+        imgEl.src = base64;
+        imgEl.className = 'w-full h-24 object-cover rounded-lg border border-slate-600';
+        previewContainer.appendChild(imgEl);
+      }
+    });
+
+    // 서버리스 함수 호출
+    submitBtn.addEventListener('click', async () => {
+      if (compressedImages.length === 0) {
+        alert('먼저 운동기구 사진을 1장 이상 선택해주세요!');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      loading.classList.remove('hidden');
+      resultSection.classList.add('hidden');
+
+      try {
+        const response = await fetch('/api/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            images: compressedImages,
+            goal: document.getElementById('goalSelect').value,
+            duration: document.getElementById('durationSelect').value,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '서버 오류');
+
+        resultContent.innerHTML = marked.parse(data.result);
+        resultSection.classList.remove('hidden');
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        submitBtn.disabled = false;
+        loading.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
